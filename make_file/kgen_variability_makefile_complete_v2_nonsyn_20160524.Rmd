@@ -1,0 +1,126 @@
+---
+title: "variable_genes"
+author: "EF"
+date: "29 April 2016"
+output: html_document
+---
+# start_section
+  
+```{r start_section}
+
+# Time stamp
+Sys.time()
+
+# Clean up
+rm(list=ls())
+graphics.off()
+
+# Set root working folder
+library(knitr)
+library(dplyr)
+library(ggplot2)
+library(stringr)
+
+opts_knit$set(root.dir = "C:/data_local/Control_data/1K_genomes")
+setwd("C:/data_local/Control_data/1K_genomes")
+
+```
+#Load original data
+```{r original data}
+exon <- read.table("ucsc_exonpos.txt", sep = "\t", quote="")
+kgen <- read.table("nextera_exome_ip10_biallelic_nonsv_1k_vep_vcf.txt", header=TRUE, sep = "\t", quote="")
+
+```
+
+#Edit data
+```{r edit data}
+library(stringr)
+colnames(exon) <- c('CHR', 'Refgene','TYPE', 'START', 'STOP','N', 'STRAND', 'X', 'IDs')
+exon2 <- data.frame(do.call('rbind', strsplit(as.character(exon$IDs),';',fixed=TRUE)))
+exon3 <- data.frame(do.call('rbind', strsplit(as.character(exon2$X1),' ',fixed=TRUE)))
+exon4 <- mutate(exon3, X2 = str_replace_all(X2, pattern='"', ''))
+exon_clean <- cbind(exon, exon4)
+exon.short <- select(exon_clean, CHR, TYPE, START, STOP, STRAND, X2)
+
+rm(exon, exon2, exon3, exon4, exon_clean)
+```
+
+#Select cds and flip -ve strands
+```{r test}
+cds <- exon.short[exon.short$TYPE == "CDS",]
+pos <- cds[cds$STRAND == "+",]
+neg <- cds[cds$STRAND == "-",]
+flip <- neg[order(neg$X2,neg$START, decreasing = TRUE),]
+flipped_bind <- rbind(pos, flip)
+rm(cds, exon.short, flip,neg, pos)
+```
+
+#Add exon number and length column
+```{r add cols}
+flipped_bind$exon <- ave(flipped_bind$X2 == flipped_bind$X2 , flipped_bind$X2, FUN=cumsum)
+
+flipped_bind$length <- flipped_bind$STOP - flipped_bind$START
+```
+
+#Count number of variants in exon
+```{r count variants}
+imp <- c("HIGH", "MODERATE")
+kgen.imp <- kgen[kgen$IMPACT %in% imp,]
+
+pos <- as.vector(kgen.imp$POS)
+start <- as.vector(flipped_bind$START)
+stop <- as.vector(flipped_bind$STOP)
+starp <- select(flipped_bind, START, STOP)
+count <- starp %>% apply(1, function(x) sum(pos >= x["START"] & pos <= x["STOP"]))
+
+count.df <- cbind(flipped_bind, count)
+```
+
+#Create variability column
+```{r variability}
+count.df$VARIABILITY <- (count.df$count/count.df$length)*100
+colnames(count.df) <-(c("CHR","TYPE","START","STOP","STRAND","geneID","exon","length","count","VARIABILITY"))
+
+count.df$VARIABILITY[is.na(count.df$VARIABILITY)] <- 0
+
+rm(flipped_bind, kgen, kgen.imp, starp, pos, start, stop)
+```
+
+#Add exon position column
+```{r add col}
+total_exons <- as.data.frame(count(count.df, geneID))
+shorted.df <- inner_join(count.df, total_exons, by="geneID")
+shorted.df$exon_pos <- (shorted.df$exon/shorted.df$n)*100
+colnames(shorted.df)[11] <- "total_exons"
+
+#Save file
+write.csv(shorted.df, file = "variability_annotated_nonsyn_R_20160524.csv", quote=FALSE)
+
+```
+
+#Set labels for variability
+```{r set labels}
+#percentage of variants above mean
+mean_var <- median(shorted.df$VARIABILITY)
+(sum(shorted.df$VARIABILITY > mean_var)/nrow(shorted.df))*100
+summary <- as.table(summary(shorted.df$VARIABILITY))
+summary
+
+#set values
+low <- shorted.df[shorted.df$VARIABILITY <= summary[2],]
+low$score <- "low"
+midlow <- shorted.df[shorted.df$VARIABILITY > summary[2] & shorted.df$VARIABILITY <= summary[3],]
+midlow$score <- "mid_low"
+midhigh <- shorted.df[shorted.df$VARIABILITY > summary[3] & shorted.df$VARIABILITY <= summary[5],]
+midhigh$score <- "mid_high"
+high <-shorted.df[shorted.df$VARIABILITY > summary[5],]
+high$score <- "high"
+
+#merge rows and tidy
+merge.scores.df <- bind_rows(low, midlow, midhigh, high)
+colnames(merge.scores.df)[1] <- "CHROM"
+clean.df <- mutate(merge.scores.df, CHROM=str_replace_all(CHROM, pattern="chr", ""))
+
+#write csv
+write.csv(clean.df, file= "variability_thresholds_nonsyn_20160524.csv", quote=FALSE)
+```

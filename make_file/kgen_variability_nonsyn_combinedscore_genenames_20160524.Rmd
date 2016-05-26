@@ -1,0 +1,85 @@
+---
+title: "variable_genes"
+author: "EF"
+date: "25 May 2016"
+output: html_document
+---
+# start_section
+  
+```{r start_section}
+
+# Time stamp
+Sys.time()
+
+# Clean up
+rm(list=ls())
+graphics.off()
+
+# Set root working folder
+library(knitr)
+library(dplyr)
+library(ggplot2)
+library(stringr)
+
+opts_knit$set(root.dir = "C:/data_local/Control_data/1K_genomes")
+setwd("C:/data_local/Control_data/1K_genomes")
+
+```
+#Load data
+```{r original data}
+var <- read.table("variability_score_outputs/variability_annotated_nonsyn_R_20160524.csv", sep= ",", header=TRUE)
+dim(var)
+
+gene <- read.table("refseq_geneid.txt", sep= "\t", header=FALSE)
+```
+
+#Create combined score
+```{r combined}
+var$VARIABILITY[is.na(var$VARIABILITY)] <- 0
+var$VARIABILITY[is.infinite(var$VARIABILITY)] <- 0
+
+comb <- var %>% group_by(geneID) %>% mutate(COMBINED_SCORE = sum(VARIABILITY*count)/total_exons)
+
+comb$COMBINED_SCORE[is.na(comb$COMBINED_SCORE)] <- 0
+```
+
+#Set labels for combined_variability
+```{r set labels}
+#percentage of variants above mean
+mean_var <- median(comb$COMBINED_SCORE)
+(sum(comb$COMBINED_SCORE > mean_var)/nrow(comb))*100
+summary <- as.table(summary(comb$COMBINED_SCORE))
+summary
+
+#set values
+low <- comb[comb$COMBINED_SCORE <= summary[2],]
+low$score <- "low"
+midlow <- comb[comb$COMBINED_SCORE > summary[2] & comb$COMBINED_SCORE <= summary[3],]
+midlow$score <- "mid_low"
+midhigh <- comb[comb$COMBINED_SCORE > summary[3] & comb$COMBINED_SCORE <= summary[5],]
+midhigh$score <- "mid_high"
+high <-comb[comb$COMBINED_SCORE > summary[5],]
+high$score <- "high"
+
+#merge rows and tidy
+merge.scores.df <- bind_rows(low, midlow, midhigh, high)
+clean.df <- mutate(merge.scores.df, CHROM=str_replace_all(CHR, pattern="chr", ""))
+rm(comb, high, low, merge.scores.df, midhigh, midlow)
+```
+
+#Add gene names and write to csv
+```{r write}
+gene_names <- select(gene, V3, V6)
+colnames(gene_names) <- c("SYMBOL", "ID")
+
+id <- data.frame(do.call('rbind', strsplit(as.character(gene_names$ID), ".",fixed=TRUE)))
+rebind <- cbind(id, gene_names)
+rb <- select(rebind, X1, SYMBOL)
+colnames(rb) <- c("geneID", "SYMBOL")
+
+rm(gene_names, gene, id, rebind)
+
+complete <- merge(clean.df, rb, by = "geneID", all.X = TRUE)
+write.csv(complete, file= "variability_thresholds_combinedscore_geneann_nonsyn_20160526.csv", quote=FALSE)
+
+```

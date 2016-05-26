@@ -1,0 +1,49 @@
+---
+title: "variable_genes"
+author: "EF"
+date: "19 May 2016"
+output: html_document
+---
+# start_section
+  
+```{r start_section}
+
+# Time stamp
+Sys.time()
+
+# Clean up
+rm(list=ls())
+graphics.off()
+
+# Set root working folder
+library(knitr)
+library(dplyr)
+library(ggplot2)
+library(stringr)
+
+opts_knit$set(root.dir = "C:/data_local/Control_data/1K_genomes/")
+setwd("C:/data_local/Control_data/1K_genomes/")
+
+```
+
+#Load data
+```{r data load}
+#variability file
+var <- read.csv("variability_thresholds_20160519.csv", header=TRUE)
+dim(var)
+sum(is.na(var$VARIABILITY))
+
+#file to add variability scores to:
+file <- read.table("C:/data_local/WECARE/WECARE_2016feb/Genotype_counts/wECARE_GTcounts_21_03_16.csv", sep = ",", header = TRUE)
+dim(file)
+```
+
+#Merge files using sql
+```{r add scores}
+library(sqldf)
+merged.df <- sqldf("select * from file f1 left join var f2 on (f1.POS >= f2.START and f1.POS <= f2.STOP and f1.CHROM==f2.CHROM) ")
+
+clean <- merged.df[!duplicated(merged.df[c("POS", "CHROM")]),]
+
+write.csv(clean, file= "WECARE_count_variability_20160523.csv")
+```

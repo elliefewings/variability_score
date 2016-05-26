@@ -1,0 +1,79 @@
+---
+title: "variable_genes"
+author: "EF"
+date: "29 April 2016"
+output: html_document
+---
+# start_section
+  
+```{r start_section}
+
+# Time stamp
+Sys.time()
+
+# Clean up
+rm(list=ls())
+graphics.off()
+
+# Set root working folder
+library(knitr)
+library(dplyr)
+library(ggplot2)
+library(stringr)
+
+opts_knit$set(root.dir = "C:/data_local/Control_data/1K_genomes/")
+#setwd("C:/data_local/Control_data/1K_genomes/")
+
+```
+#Load data
+```{r load original data}
+kgen <- read.table('C:/data_local/Control_data/1K_genomes/nextera_exome_ip10_biallelic_nonsv_1k_vep_vcf.txt', sep="\t", header=TRUE)
+ncbi <- read.table('C:/data_local/Control_data/1K_genomes/accesno_sizes_NCBI.txt', sep="\t")
+```
+
+#Edit data
+```{r edit data}
+`colnames<-`(ncbi, c('CHR', 'Refgene', 'TYPE', 'START', 'STOP', 'N', 'STRAND', 'X', 'IDs'))
+
+#Load data
+```{r load data}
+exons_original.df <- read.table("kgen_variableregion_20160504.csv", header=TRUE, row.names=1, sep=",", quote="")
+exons.df <- exons_original.df[exons_original.df$length > 6,]
+short.df <- exons.df[exons.df$length <2000,]
+```
+
+#Add columns to data
+```{r add col}
+total_exons <- as.data.frame(count(exons_original.df, geneID))
+shorted.df <- inner_join(short.df, total_exons, by="geneID")
+shorted.df$exon_pos <- (shorted.df$exon/shorted.df$n)*100
+colnames(shorted.df)[10] <- "total_exons"
+
+```
+
+#Set labels for variability
+```{r set labels}
+#percentage of variants above mean
+mean_var <- median(shorted.df$variable)
+(sum(shorted.df$variable > mean_var)/nrow(shorted.df))*100
+summary <- as.table(summary(shorted.df$variable))
+summary
+
+#set values
+low <- shorted.df[shorted.df$variable <= summary[2],]
+low$score <- "low"
+midlow <- shorted.df[shorted.df$variable > summary[2] & shorted.df$variable <= summary[3],]
+midlow$score <- "mid_low"
+midhigh <- shorted.df[shorted.df$variable > summary[3] & shorted.df$variable <= summary[5],]
+midhigh$score <- "mid_high"
+high <-shorted.df[shorted.df$variable > summary[5],]
+high$score <- "high"
+
+#merge rows and tidy
+merge.scores.df <- bind_rows(low, midlow, midhigh, high)
+colnames(merge.scores.df)[1] <- "CHROM"
+clean.df <- mutate(merge.scores.df, CHROM=str_replace_all(CHROM, pattern="chr", ""))
+
+#write csv
+write.csv(clean.df, file= "variability_scores_file.csv")
+```

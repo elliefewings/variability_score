@@ -1,0 +1,103 @@
+---
+title: "variable_genes"
+author: "EF"
+date: "29 April 2016"
+output: html_document
+---
+# start_section
+  
+```{r start_section}
+
+# Time stamp
+Sys.time()
+
+# Clean up
+rm(list=ls())
+graphics.off()
+
+# Set root working folder
+library(knitr)
+library(dplyr)
+library(ggplot2)
+
+opts_knit$set(root.dir = "C:/data_local/Control_data/1K_genomes/")
+setwd("C:/data_local/Control_data/1K_genomes/")
+
+```
+
+#Load data
+```{r load data}
+exons_original.df <- read.table("variability_annotated_R_20160518_edit.txt", header=TRUE, row.names=1, sep=",", quote="")
+exons.df <- exons_original.df[exons_original.df$length > 6,]
+short.df <- exons.df[exons.df$length <2000,]
+rm(exons_original.df)
+```
+
+#Make scatter of variability versus exon position
+```{r variability scatter}
+variable.dat <- ggplot(data=short.df, (aes(x=exon_pos, y=VARIABILITY)))
+variable.dat + geom_point()
+
+#create mean of variability at each pos
+mean_var <- group_by(short.df, exon_pos) %>% summarise(mean = mean(VARIABILITY))
+mean_var.dat <- ggplot(data=mean_var, (aes(x=exon_pos, y=mean)))
+mean_var.dat + geom_point()
+
+#aggregate into groups of 5 exons
+
+short.df$pos_cat<-as.factor(cut(short.df$exon_pos, seq(0,100,5), right=TRUE, labels=c(1:20)))
+mean_var2 <- group_by(short.df, pos_cat) %>% summarise(mean = mean(VARIABILITY))
+mean_var2.dat <- ggplot(data=mean_var2, (aes(x=pos_cat, y=mean)))
+mean_var2.dat + geom_bar(stat="identity")
+
+databox <- ggplot(data=short.df, aes(x=pos_cat, y=VARIABILITY))
+databox + geom_boxplot()
+```
+
+#Make histograms
+```{r hists}
+#Histogram of exon lengths
+library(Rmisc)
+exons.sum <- summarySE(exons.df, measurevar="length", groupvars=c("length"))
+
+ggplot(data=exons.df, aes(x=length)) +
+  geom_histogram(stat="bin", position="dodge", colour="black", binwidth=10) +
+  scale_fill_brewer(palette="Greys")+
+  scale_x_continuous(name= "Exon length", limits=c(0, 500))
+
+#Histogram of number of exons
+exonno.sum <- summarySE(exons.df, measurevar="geneID", groupvars=c("geneID"))
+
+ggplot(data=exonno.sum, aes(x=N)) +
+  geom_histogram(stat="bin", position="dodge", colour="black", binwidth=2) +
+  scale_fill_brewer(palette="Greys")+
+  scale_x_continuous(name= "Number of exons", limits=c(0, 100))
+
+```
+
+#Create scatter of exon length vs no of exons
+```{r scatter}
+total_exons <- as.data.frame(count(short.df, "geneID"))
+short.df <- inner_join(short.df, total_exons, by="geneID")
+exon.dat <- ggplot(data=short.df,aes(x=exon, y=length, colour=freq, alpha=freq))
+exon.dat + geom_point(alpha=0.7) + 
+  scale_colour_gradient2(low="yellow", mid="orange", high="red") +
+  scale_alpha_continuous(range = c(0.3,1)) +
+  scale_x_continuous(name= "Exon number", limits=c(0, 100))
+
+```
+
+#From hists create 'average' data that falls within majority
+```{r average}
+shorter.df <- shorted.df[shorted.df$freq < 30,]
+av.df <- shorter.df[shorter.df$length < 250,]
+
+```
+
+#Calculate position of exon as % of total exons
+```{r exon pos}
+exon.dat <- ggplot(data=short.df,aes(x=exon_pos, y=length, colour=exon))
+exon.dat + geom_point() +
+  scale_colour_gradient2(low="yellow", mid="orange", high="red", midpoint = 50) +
+  scale_x_continuous(name= "Exon position", limits=c(0, 100))
+```
