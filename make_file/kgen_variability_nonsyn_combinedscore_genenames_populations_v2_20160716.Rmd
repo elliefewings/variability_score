@@ -1,0 +1,287 @@
+---
+title: "variable_genes"
+author: "EF"
+date: "07 June 2016"
+output: html_document
+---
+# start_section
+  
+```{r start_section}
+
+# Time stamp
+Sys.time()
+
+# Clean up
+rm(list=ls())
+graphics.off()
+
+# Set root working folder
+library(knitr)
+library(dplyr)
+library(ggplot2)
+library(stringr)
+
+opts_knit$set(root.dir = "/scratch/medgen/users/eleanor/2015-16/R_scripts/")
+setwd("/scratch/medgen/users/eleanor/2015-16/R_scripts/")
+```
+
+#Load data
+```{r original data}
+count_2.df <- read.table("variability_thresholds_nonsyn_populations_20160609.csv", sep= ",", header=TRUE)
+dim(count_2.df)
+
+gene <- read.table("Refseq2Gene.txt", sep= "\t", header=FALSE)
+dim(gene)
+```
+
+#Create combined score
+```{r combined}
+count_2.df$VARIABILITY[is.na(count_2.df$VARIABILITY)] <- 0
+count_2.df$VARIABILITY[is.infinite(count_2.df$VARIABILITY)] <- 0
+
+count_2.df$all_VARIABILITY[is.infinite(count_2.df$all_VARIABILITY)] <- 0
+count_2.df$AFR_VARIABILITY[is.infinite(count_2.df$AFR_VARIABILITY)] <- 0
+count_2.df$AMR_VARIABILITY[is.infinite(count_2.df$AMR_VARIABILITY)] <- 0
+count_2.df$EAS_VARIABILITY[is.infinite(count_2.df$EAS_VARIABILITY)] <- 0
+count_2.df$SAS_VARIABILITY[is.infinite(count_2.df$SAS_VARIABILITY)] <- 0
+count_2.df$EUR_VARIABILITY[is.infinite(count_2.df$EUR_VARIABILITY)] <- 0
+
+comb <- count_2.df %>% group_by(geneID) %>% mutate(COMBINED_SCORE = sum(VARIABILITY)/total_exons, 
+                                                   COMBINED_SCORE_ALL = sum(all_VARIABILITY)/total_exons,
+                                                   COMBINED_SCORE_AFR = sum(AFR_VARIABILITY)/total_exons,
+                                                   COMBINED_SCORE_AMR = sum(AMR_VARIABILITY)/total_exons,
+                                                   COMBINED_SCORE_SAS = sum(SAS_VARIABILITY)/total_exons,
+                                                   COMBINED_SCORE_EAS = sum(EAS_VARIABILITY)/total_exons,
+                                                   COMBINED_SCORE_EUR = sum(EUR_VARIABILITY)/total_exons)
+
+comb$COMBINED_SCORE_ALL[is.na(comb$COMBINED_SCORE_ALL)] <- 0
+comb$COMBINED_SCORE_AFR[is.na(comb$COMBINED_SCORE_AFR)] <- 0
+comb$COMBINED_SCORE_AMR[is.na(comb$COMBINED_SCORE_AMR)] <- 0
+comb$COMBINED_SCORE_SAS[is.na(comb$COMBINED_SCORE_SAS)] <- 0
+comb$COMBINED_SCORE_EAS[is.na(comb$COMBINED_SCORE_EAS)] <- 0
+comb$COMBINED_SCORE_EUR[is.na(comb$COMBINED_SCORE_EUR)] <- 0
+comb$COMBINED_SCORE[is.na(comb$COMBINED_SCORE)] <- 0
+
+```
+
+#Set labels for combined_variability
+```{r set labels}
+
+##ORIGINAL
+
+#percentage of variants above mean
+mean_var <- median(comb$COMBINED_SCORE)
+summary <- as.table(summary(comb$COMBINED_SCORE))
+
+#set values
+low <- comb[comb$COMBINED_SCORE <= summary[2],]
+if (nrow(low) > 0){
+  low$Cscore <- "low"
+  }
+midlow <- comb[comb$COMBINED_SCORE > summary[2] & comb$COMBINED_SCORE <= summary[3],]
+if (nrow(midlow) > 0){
+  midlow$Cscore <- "mid_low"
+  }
+midhigh <- comb[comb$COMBINED_SCORE > summary[3] & comb$COMBINED_SCORE <= summary[5],]
+if (nrow(midhigh) > 0){
+  midhigh$Cscore <- "mid_high"
+  }
+high <-comb[comb$COMBINED_SCORE > summary[5],]
+if (nrow(high) > 0){
+  high$Cscore <- "high"
+  }
+
+#merge rows and tidy
+merge.df <- bind_rows(low, midlow, midhigh, high)
+
+##ALL
+
+#percentage of variants above mean
+mean_var <- median(comb$COMBINED_SCORE_ALL)
+summary <- as.table(summary(comb$COMBINED_SCORE_ALL))
+
+#set values
+low <- comb[comb$COMBINED_SCORE_ALL <= summary[2],]
+if (nrow(low) > 0){
+  low$Cscore_ALL <- "low"
+  }
+midlow <- comb[comb$COMBINED_SCORE_ALL > summary[2] & comb$COMBINED_SCORE_ALL <= summary[3],]
+if (nrow(midlow) > 0){
+  midlow$Cscore_ALL <- "mid_low"
+  }
+midhigh <- comb[comb$COMBINED_SCORE_ALL > summary[3] & comb$COMBINED_SCORE_ALL <= summary[5],]
+if (nrow(midhigh) > 0){
+  midhigh$Cscore_ALL <- "mid_high"
+  }
+high <-comb[comb$COMBINED_SCORE_ALL > summary[5],]
+if (nrow(high) > 0){
+  high$Cscore_ALL <- "high"
+  }
+
+#merge rows and tidy
+merge_ALL.df <- bind_rows(low, midlow, midhigh, high)
+
+##AFR
+
+#percentage of variants above mean
+mean_var <- median(comb$COMBINED_SCORE_AFR)
+summary <- as.table(summary(comb$COMBINED_SCORE_AFR))
+
+#set values
+low <- comb[comb$COMBINED_SCORE_AFR <= summary[2],]
+if (nrow(low) > 0){
+  low$Cscore_AFR <- "low"
+  }
+midlow <- comb[comb$COMBINED_SCORE_AFR > summary[2] & comb$COMBINED_SCORE_AFR <= summary[3],]
+if (nrow(midlow) > 0){
+  midlow$Cscore_AFR <- "mid_low"
+  }
+midhigh <- comb[comb$COMBINED_SCORE_AFR > summary[3] & comb$COMBINED_SCORE_AFR <= summary[5],]
+if (nrow(midhigh) > 0){
+  midhigh$Cscore_AFR <- "mid_high"
+  }
+high <-comb[comb$COMBINED_SCORE_AFR > summary[5],]
+if (nrow(high) > 0){
+  high$Cscore_AFR <- "high"
+  }
+
+#merge rows and tidy
+merge_AFR.df <- bind_rows(low, midlow, midhigh, high)
+
+##AMR
+
+#percentage of variants above mean
+mean_var <- median(comb$COMBINED_SCORE_AMR)
+summary <- as.table(summary(comb$COMBINED_SCORE_AMR))
+
+#set values
+low <- comb[comb$COMBINED_SCORE_AMR <= summary[2],]
+if (nrow(low) > 0){
+  low$Cscore_AMR <- "low"
+  }
+midlow <- comb[comb$COMBINED_SCORE_AMR > summary[2] & comb$COMBINED_SCORE_AMR <= summary[3],]
+if (nrow(midlow) > 0){
+  midlow$Cscore_AMR <- "mid_low"
+  }
+midhigh <- comb[comb$COMBINED_SCORE_AMR > summary[3] & comb$COMBINED_SCORE_AMR <= summary[5],]
+if (nrow(midhigh) > 0){
+  midhigh$Cscore_AMR <- "mid_high"
+  }
+high <-comb[comb$COMBINED_SCORE_AMR > summary[5],]
+if (nrow(high) > 0){
+  high$Cscore_AMR <- "high"
+  }
+
+#merge rows and tidy
+merge_AMR.df <- bind_rows(low, midlow, midhigh, high)
+
+##SAS
+
+#percentage of variants above mean
+mean_var <- median(comb$COMBINED_SCORE_SAS)
+summary <- as.table(summary(comb$COMBINED_SCORE_SAS))
+
+#set values
+low <- comb[comb$COMBINED_SCORE_SAS <= summary[2],]
+if (nrow(low) > 0){
+  low$Cscore_SAS <- "low"
+  }
+midlow <- comb[comb$COMBINED_SCORE_SAS > summary[2] & comb$COMBINED_SCORE_SAS <= summary[3],]
+if (nrow(midlow) > 0){
+  midlow$Cscore_SAS <- "mid_low"
+  }
+midhigh <- comb[comb$COMBINED_SCORE_SAS > summary[3] & comb$COMBINED_SCORE_SAS <= summary[5],]
+if (nrow(midhigh) > 0){
+  midhigh$Cscore_SAS <- "mid_high"
+  }
+high <-comb[comb$COMBINED_SCORE_SAS > summary[5],]
+if (nrow(high) > 0){
+  high$Cscore_SAS <- "high"
+  }
+
+#merge rows and tidy
+merge_SAS.df <- bind_rows(low, midlow, midhigh, high)
+
+##EAS
+
+#percentage of variants above mean
+mean_var <- median(comb$COMBINED_SCORE_EAS)
+summary <- as.table(summary(comb$COMBINED_SCORE_EAS))
+
+#set values
+low <- comb[comb$COMBINED_SCORE_EAS <= summary[2],]
+if (nrow(low) > 0){
+  low$Cscore_EAS <- "low"
+  }
+midlow <- comb[comb$COMBINED_SCORE_EAS > summary[2] & comb$COMBINED_SCORE_EAS <= summary[3],]
+if (nrow(midlow) > 0){
+  midlow$Cscore_EAS <- "mid_low"
+  }
+midhigh <- comb[comb$COMBINED_SCORE_EAS > summary[3] & comb$COMBINED_SCORE_EAS <= summary[5],]
+if (nrow(midhigh) > 0){
+  midhigh$Cscore_EAS <- "mid_high"
+  }
+high <-comb[comb$COMBINED_SCORE_EAS > summary[5],]
+if (nrow(high) > 0){
+  high$Cscore_EAS <- "high"
+  }
+
+#merge rows and tidy
+merge_EAS.df <- bind_rows(low, midlow, midhigh, high)
+
+##EUR
+
+#percentage of variants above mean
+mean_var <- median(comb$COMBINED_SCORE_EUR)
+summary <- as.table(summary(comb$COMBINED_SCORE_EUR))
+
+#set values
+low <- comb[comb$COMBINED_SCORE_EUR <= summary[2],]
+if (nrow(low) > 0){
+  low$Cscore_EUR <- "low"
+  }
+midlow <- comb[comb$COMBINED_SCORE_EUR > summary[2] & comb$COMBINED_SCORE_EUR <= summary[3],]
+if (nrow(midlow) > 0){
+  midlow$Cscore_EUR <- "mid_low"
+  }
+midhigh <- comb[comb$COMBINED_SCORE_EUR > summary[3] & comb$COMBINED_SCORE_EUR <= summary[5],]
+if (nrow(midhigh) > 0){
+  midhigh$Cscore_EUR <- "mid_high"
+  }
+high <-comb[comb$COMBINED_SCORE_EUR > summary[5],]
+if (nrow(high) > 0){
+  high$Cscore_EUR <- "high"
+  }
+
+#merge rows and tidy
+merge_EUR.df <- bind_rows(low, midlow, midhigh, high)
+```
+
+#merge rows and tidy
+```{r merge and tidy}
+dfs <- c(merge_ALL.df, merge_AFR.df, merge_AMR.df, merge_EAS.df, merge_SAS.df, merge_EUR.df)
+merge.scores.df <- merge(merge.df, dfs)
+colnames(merge.scores.df)[3] <- "CHROM"
+clean.df <- mutate(merge.scores.df, CHROM=str_replace_all(CHROM, pattern="chr", ""))
+scores <- select(clean.df, contains("Cscore"))
+nums <- select(clean.df, contains("COMBINED_SCORE"))
+nums_uniq <- nums[1:7]
+short.df <- as.data.frame(clean.df$geneID)
+bind <- bind_cols(short.df, nums_uniq, scores)
+colnames(bind)[1] <- "geneID"
+
+tokeep <- c("bind", "gene")
+rm(list=setdiff(ls(), tokeep))
+```
+
+#Add gene names and write to csv
+```{r write}
+colnames(gene) <- c("geneID", "SYMBOL")
+
+complete <- merge(bind, gene, by = "geneID", all.x = TRUE, all.y = FALSE)
+gene_orig <- complete[!duplicated(complete$SYMBOL),]
+sum(is.na(gene_orig$SYMBOL))
+
+write.csv(gene_orig, file="variability_thresholds_combinedscore_geneann_nonsyn_populations_v2_20160716.csv", quote=FALSE)
+
+```

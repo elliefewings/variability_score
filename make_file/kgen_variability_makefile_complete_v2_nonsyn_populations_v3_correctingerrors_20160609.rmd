@@ -1,0 +1,344 @@
+---
+title: "variable_genes"
+author: "EF"
+date: "02 June 2016"
+output: html_document
+---
+# start_section
+  
+```{r start_section}
+
+# Time stamp
+Sys.time()
+
+# Clean up
+rm(list=ls())
+graphics.off()
+
+# Set root working folder
+library(knitr)
+library(dplyr)
+library(ggplot2)
+library(stringr)
+
+opts_knit$set(root.dir = "/scratch/medgen/users/eleanor/2015-16/R_scripts/")
+setwd("/scratch/medgen/users/eleanor/2015-16/R_scripts/")
+
+```
+
+#Load original data
+```{r original data}
+exon <- read.table("ucsc_exonpos.txt", sep = "\t", quote="")
+kgen <- read.table("nextera_exome_ip10_biallelic_nonsv_1k_vep_vcf.txt", header=TRUE, sep = "\t", quote="")
+
+```
+
+#Edit data
+```{r edit data}
+library(stringr)
+colnames(exon) <- c('CHR', 'Refgene','TYPE', 'START', 'STOP','N', 'STRAND', 'X', 'IDs')
+exon2 <- data.frame(do.call('rbind', strsplit(as.character(exon$IDs),';',fixed=TRUE)))
+exon3 <- data.frame(do.call('rbind', strsplit(as.character(exon2$X1),' ',fixed=TRUE)))
+exon4 <- mutate(exon3, X2 = str_replace_all(X2, pattern='"', ''))
+exon_clean <- cbind(exon, exon4)
+exon.short <- select(exon_clean, CHR, TYPE, START, STOP, STRAND, X2)
+
+rm(exon, exon2, exon3, exon4, exon_clean)
+```
+
+#Select cds and flip -ve strands
+```{r test}
+cds <- exon.short[exon.short$TYPE == "CDS",]
+pos <- cds[cds$STRAND == "+",]
+neg <- cds[cds$STRAND == "-",]
+flip <- neg[order(neg$X2,neg$START, decreasing = TRUE),]
+flipped_bind <- rbind(pos, flip)
+rm(cds, exon.short, flip,neg, pos)
+```
+
+#Add exon number and length column
+```{r add cols}
+flipped_bind$exon <- ave(flipped_bind$X2 == flipped_bind$X2 , flipped_bind$X2, FUN=cumsum)
+
+flipped_bind$length <- flipped_bind$STOP - flipped_bind$START
+```
+
+#Create allele counts for different populations
+```{r populations}
+imp <- c("HIGH", "MODERATE")
+kgen.imp <- kgen[kgen$IMPACT %in% imp,]
+
+kgen.imp$AFR_AC <- kgen.imp$AFR_AF*(2*661)
+kgen.imp$AMR_AC <- kgen.imp$AMR_AF*(2*347)
+kgen.imp$EAS_AC <- kgen.imp$EAS_AF*(2*504)
+kgen.imp$SAS_AC <- kgen.imp$SAS_AF*(2*489)
+kgen.imp$EUR_AC <- kgen.imp$EUR_AF*(2*503)
+
+```
+
+
+#Count number of variants in exon
+```{r count variants}
+
+pos <- as.vector(kgen.imp$POS)
+
+starp <- select(flipped_bind, START, STOP)
+count <- starp %>% apply(1, function(x) sum(pos >= x["START"] & pos <= x["STOP"]))
+
+count_all <- starp %>% apply(1, function(x) sum(kgen.imp$AC[pos >= x["START"] & pos <= x["STOP"]]))
+count_AFR <- starp %>% apply(1, function(x) sum(kgen.imp$AFR_AC[pos >= x["START"] & pos <= x["STOP"]]))
+count_AMR <- starp %>% apply(1, function(x) sum(kgen.imp$AMR_AC[pos >= x["START"] & pos <= x["STOP"]]))
+count_EAS <- starp %>% apply(1, function(x) sum(kgen.imp$EAS_AC[pos >= x["START"] & pos <= x["STOP"]]))
+count_SAS <- starp %>% apply(1, function(x) sum(kgen.imp$SAS_AC[pos >= x["START"] & pos <= x["STOP"]]))
+count_EUR <- starp %>% apply(1, function(x) sum(kgen.imp$EUR_AC[pos >= x["START"] & pos <= x["STOP"]]))
+
+count.df <- cbind(flipped_bind, count, count_all, count_AFR, count_AMR, count_EAS, count_SAS, count_EUR)
+```
+
+#Create variability column
+```{r variability}
+count.df$VARIABILITY <- (count.df$count/count.df$length)*100
+
+count.df$all_VARIABILITY <- (count.df$count_all/count.df$length)*100
+count.df$AFR_VARIABILITY <- (count.df$count_AFR/count.df$length)*100
+count.df$AMR_VARIABILITY <- (count.df$count_AMR/count.df$length)*100
+count.df$EAS_VARIABILITY <- (count.df$count_EAS/count.df$length)*100
+count.df$SAS_VARIABILITY <- (count.df$count_SAS/count.df$length)*100
+count.df$EUR_VARIABILITY <- (count.df$count_EUR/count.df$length)*100
+
+colnames(count.df)[6] <- "geneID"
+
+count.df$VARIABILITY[is.na(count.df$VARIABILITY)] <- 0
+count.df$all_VARIABILITY[is.na(count.df$all_VARIABILITY)] <- 0
+count.df$AFR_VARIABILITY[is.na(count.df$AFR_VARIABILITY)] <- 0
+count.df$AMR_VARIABILITY[is.na(count.df$AMR_VARIABILITY)] <- 0
+count.df$EAS_VARIABILITY[is.na(count.df$EAS_VARIABILITY)] <- 0
+count.df$SAS_VARIABILITY[is.na(count.df$SAS_VARIABILITY)] <- 0
+count.df$EUR_VARIABILITY[is.na(count.df$EUR_VARIABILITY)] <- 0
+
+rm(flipped_bind, kgen, kgen.imp, starp, pos, count_EUR, count_SAS, count_EAS, count_AMR, count_AFR, count_all)
+
+
+```
+
+#Add exon position column
+```{r add col}
+total_exons <- as.data.frame(count(count.df, geneID))
+shorted.df <- inner_join(count.df, total_exons, by="geneID")
+shorted.df$exon_pos <- (shorted.df$exon/shorted.df$n)*100
+colnames(shorted.df)[(names(shorted.df) == "n")] <- "total_exons"
+
+#Save file
+write.csv(shorted.df, file = "variability_annotated_nonsyn_R_population_20160608.csv", quote=FALSE)
+
+```
+
+#Load saved file
+```{r reload}
+shorted.df <- read.table("variability_annotated_nonsyn_R_population_20160608.csv", header=TRUE, sep= ",")
+shorted.df$X <- NULL
+colnames(shorted.df)[(names(shorted.df) == "total_exons")] <- "count_AFR"
+colnames(shorted.df)[(names(shorted.df) == "n")] <- "total_exons"
+
+```
+
+
+#Set labels for variability
+```{r set labels}
+
+##ORIGINAL
+
+#percentage of variants above mean
+mean_var <- median(shorted.df$VARIABILITY)
+summary <- as.table(summary(shorted.df$VARIABILITY))
+
+
+#set values
+low <- shorted.df[shorted.df$VARIABILITY <= summary[2],]
+if (nrow(low) > 0){
+  low$score <- "low"
+  }
+midlow <- shorted.df[shorted.df$VARIABILITY > summary[2] & shorted.df$VARIABILITY <= summary[3],]
+if (nrow(midlow) > 0){
+  midlow$score <- "mid_low"
+  }
+midhigh <- shorted.df[shorted.df$VARIABILITY > summary[3] & shorted.df$VARIABILITY <= summary[5],]
+if (nrow(midhigh) > 0){
+  midhigh$score <- "mid_high"
+  }
+high <-shorted.df[shorted.df$VARIABILITY > summary[5],]
+if (nrow(high) > 0){
+  high$score <- "high"
+  }
+
+merge.df <- bind_rows(low, midlow, midhigh, high)
+
+##ALL
+
+#percentage of variants above mean
+mean_var <- median(shorted.df$all_VARIABILITY)
+summary <- as.table(summary(shorted.df$all_VARIABILITY))
+
+#set values
+low <- shorted.df[shorted.df$all_VARIABILITY <= summary[2],]
+if (nrow(low) > 0){
+  low$all_score <- "low"
+  }
+midlow <- shorted.df[shorted.df$all_VARIABILITY > summary[2] & shorted.df$all_VARIABILITY <= summary[3],]
+if (nrow(midlow) > 0){
+  midlow$all_score <- "mid_low"
+  }
+midhigh <- shorted.df[shorted.df$all_VARIABILITY > summary[3] & shorted.df$all_VARIABILITY <= summary[5],]
+if (nrow(midhigh) > 0){
+  midhigh$all_score <- "mid_high"
+  }
+high <-shorted.df[shorted.df$all_VARIABILITY > summary[5],]
+if (nrow(high) > 0){
+  high$all_score <- "high"
+  }
+
+merge_all.df <- bind_rows(low, midlow, midhigh, high)
+
+##AFR
+
+#percentage of variants above mean
+mean_var <- median(shorted.df$AFR_VARIABILITY)
+summary <- as.table(summary(shorted.df$AFR_VARIABILITY))
+
+#set values
+low <- shorted.df[shorted.df$AFR_VARIABILITY <= summary[2],]
+if (nrow(low) > 0){
+  low$AFR_score <- "low"
+  }
+midlow <- shorted.df[shorted.df$AFR_VARIABILITY > summary[2] & shorted.df$AFR_VARIABILITY <= summary[3],]
+if (nrow(midlow) > 0){
+  midlow$AFR_score <- "mid_low"
+  }
+midhigh <- shorted.df[shorted.df$AFR_VARIABILITY > summary[3] & shorted.df$AFR_VARIABILITY <= summary[5],]
+if (nrow(midhigh) > 0){
+  midhigh$AFR_score <- "mid_high"
+  }
+high <-shorted.df[shorted.df$AFR_VARIABILITY > summary[5],]
+if (nrow(high) > 0){
+  high$AFR_score <- "high"
+  }
+
+merge_afr.df <- bind_rows(low, midlow, midhigh, high)
+
+##AMR
+
+#percentage of variants above mean
+mean_var <- median(shorted.df$AMR_VARIABILITY)
+summary <- as.table(summary(shorted.df$AMR_VARIABILITY))
+
+#set values
+low <- shorted.df[shorted.df$AMR_VARIABILITY <= summary[2],]
+if (nrow(low) > 0){
+  low$AMR_score <- "low"
+  }
+midlow <- shorted.df[shorted.df$AMR_VARIABILITY > summary[2] & shorted.df$AMR_VARIABILITY <= summary[3],]
+if (nrow(midlow) > 0){
+  midlow$AMR_score <- "mid_low"
+  }
+midhigh <- shorted.df[shorted.df$AMR_VARIABILITY > summary[3] & shorted.df$AMR_VARIABILITY <= summary[5],]
+if (nrow(midhigh) > 0){
+  midhigh$AMR_score <- "mid_high"
+  }
+high <-shorted.df[shorted.df$AMR_VARIABILITY > summary[5],]
+if (nrow(high) > 0){
+  high$AMR_score <- "high"
+  }
+
+merge_amr.df <- bind_rows(low, midlow, midhigh, high)
+
+##EAS
+
+#percentage of variants above mean
+mean_var <- median(shorted.df$EAS_VARIABILITY)
+summary <- as.table(summary(shorted.df$EAS_VARIABILITY))
+
+#set values
+low <- shorted.df[shorted.df$EAS_VARIABILITY <= summary[2],]
+if (nrow(low) > 0){
+  low$EAS_score <- "low"
+  }
+midlow <- shorted.df[shorted.df$EAS_VARIABILITY > summary[2] & shorted.df$EAS_VARIABILITY <= summary[3],]
+if (nrow(midlow) > 0){
+  midlow$EAS_score <- "mid_low"
+  }
+midhigh <- shorted.df[shorted.df$EAS_VARIABILITY > summary[3] & shorted.df$EAS_VARIABILITY <= summary[5],]
+if (nrow(midhigh) > 0){
+  midhigh$EAS_score <- "mid_high"
+  }
+high <-shorted.df[shorted.df$EAS_VARIABILITY > summary[5],]
+if (nrow(high) > 0){
+  high$EAS_score <- "high"
+  }
+
+merge_eas.df <- bind_rows(low, midlow, midhigh, high)
+
+##SAS
+
+#percentage of variants above mean
+mean_var <- median(shorted.df$SAS_VARIABILITY)
+summary <- as.table(summary(shorted.df$SAS_VARIABILITY))
+
+#set values
+low <- shorted.df[shorted.df$SAS_VARIABILITY <= summary[2],]
+if (nrow(low) > 0){
+  low$SAS_score <- "low"
+  }
+midlow <- shorted.df[shorted.df$SAS_VARIABILITY > summary[2] & shorted.df$SAS_VARIABILITY <= summary[3],]
+if (nrow(midlow) > 0){
+  midlow$SAS_score <- "mid_low"
+  }
+midhigh <- shorted.df[shorted.df$SAS_VARIABILITY > summary[3] & shorted.df$SAS_VARIABILITY <= summary[5],]
+if (nrow(midhigh) > 0){
+  midhigh$SAS_score <- "mid_high"
+  }
+high <-shorted.df[shorted.df$SAS_VARIABILITY > summary[5],]
+if (nrow(high) > 0){
+  high$SAS_score <- "high"
+  }
+
+merge_sas.df <- bind_rows(low, midlow, midhigh, high)
+
+##EUR
+
+#percentage of variants above mean
+mean_var <- median(shorted.df$EUR_VARIABILITY)
+summary <- as.table(summary(shorted.df$EUR_VARIABILITY))
+
+#set values
+low <- shorted.df[shorted.df$EUR_VARIABILITY <= summary[2],]
+if (nrow(low) > 0){
+  low$EUR_score <- "low"
+  }
+midlow <- shorted.df[shorted.df$EUR_VARIABILITY > summary[2] & shorted.df$EUR_VARIABILITY <= summary[3],]
+if (nrow(midlow) > 0){
+  midlow$EUR_score <- "mid_low"
+  }
+midhigh <- shorted.df[shorted.df$EUR_VARIABILITY > summary[3] & shorted.df$EUR_VARIABILITY <= summary[5],]
+if (nrow(midhigh) > 0){
+  midhigh$EUR_score <- "mid_high"
+  }
+high <-shorted.df[shorted.df$EUR_VARIABILITY > summary[5],]
+if (nrow(high) > 0){
+  high$EUR_score <- "high"
+  }
+
+merge_eur.df <- bind_rows(low, midlow, midhigh, high)
+
+#merge rows and tidy
+dfs <- c(merge_all.df, merge_afr.df, merge_amr.df, merge_eas.df, merge_sas.df, merge_eur.df)
+names <- colnames(shorted.df)
+merge.scores.df <- merge(merge.df, dfs)
+colnames(merge.scores.df)[2] <- "CHROM"
+clean.df <- mutate(merge.scores.df, CHROM=str_replace_all(CHROM, pattern="chr", ""))
+scores <- select(clean.df, contains("score"))
+short.df <- clean.df[1:24]
+bind <- bind_cols(short.df, scores)
+
+#write csv
+write.csv(bind, file= "variability_thresholds_nonsyn_populations_20160609.csv", quote=FALSE)
+```

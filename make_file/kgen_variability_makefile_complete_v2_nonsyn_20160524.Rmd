@@ -21,8 +21,8 @@ library(dplyr)
 library(ggplot2)
 library(stringr)
 
-opts_knit$set(root.dir = "C:/data_local/Control_data/1K_genomes")
-setwd("C:/data_local/Control_data/1K_genomes")
+opts_knit$set(root.dir = "/scratch/medgen/users/eleanor/2015-16/R_scripts/")
+setwd("/scratch/medgen/users/eleanor/2015-16/R_scripts/")
 
 ```
 #Load original data

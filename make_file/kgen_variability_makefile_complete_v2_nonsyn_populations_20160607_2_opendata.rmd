@@ -1,0 +1,92 @@
+---
+title: "variable_genes"
+author: "EF"
+date: "07 June 2016"
+output: html_document
+---
+# start_section
+  
+```{r start_section}
+
+# Time stamp
+Sys.time()
+
+# Clean up
+rm(list=ls())
+graphics.off()
+
+# Set root working folder
+library(knitr)
+library(dplyr)
+library(ggplot2)
+library(stringr)
+
+opts_knit$set(root.dir = "/scratch/medgen/users/eleanor/2015-16/R_scripts/")
+#setwd("/scratch/medgen/users/eleanor/2015-16/R_scripts/")
+
+load("kgen_variability_makefile_complete_v2_nonsyn_populations_20160607_2.RData")
+```
+
+#Load original data
+```{r original data}
+exon <- read.table("ucsc_exonpos.txt", sep = "\t", quote="")
+
+```
+
+#Edit data
+```{r edit data}
+library(stringr)
+colnames(exon) <- c('CHR', 'Refgene','TYPE', 'START', 'STOP','N', 'STRAND', 'X', 'IDs')
+exon2 <- data.frame(do.call('rbind', strsplit(as.character(exon$IDs),';',fixed=TRUE)))
+exon3 <- data.frame(do.call('rbind', strsplit(as.character(exon2$X1),' ',fixed=TRUE)))
+exon4 <- mutate(exon3, X2 = str_replace_all(X2, pattern='"', ''))
+exon_clean <- cbind(exon, exon4)
+exon.short <- select(exon_clean, CHR, TYPE, START, STOP, STRAND, X2)
+
+rm(exon, exon2, exon3, exon4, exon_clean)
+```
+
+#Select cds and flip -ve strands
+```{r test}
+cds <- exon.short[exon.short$TYPE == "CDS",]
+pos <- cds[cds$STRAND == "+",]
+neg <- cds[cds$STRAND == "-",]
+flip <- neg[order(neg$X2,neg$START, decreasing = TRUE),]
+flipped_bind <- rbind(pos, flip)
+rm(cds, exon.short, flip,neg, pos)
+```
+
+#Add exon number and length column
+```{r add cols}
+flipped_bind$exon <- ave(flipped_bind$X2 == flipped_bind$X2 , flipped_bind$X2, FUN=cumsum)
+
+flipped_bind$length <- flipped_bind$STOP - flipped_bind$START
+```
+
+#recombine data
+```{r recombine}
+count_2.df <- cbind(flipped_bind, count, count_all, count_AFR, count_AMR, count_EAS, count_SAS, count_EUR)
+
+count_2.df$VARIABILITY <- (count_2.df$count/count_2.df$length)*100
+
+count_2.df$all_VARIABILITY <- (count_2.df$count_all/count_2.df$length)*100
+count_2.df$AFR_VARIABILITY <- (count_2.df$count_AFR/count_2.df$length)*100
+count_2.df$AMR_VARIABILITY <- (count_2.df$count_AMR/count_2.df$length)*100
+count_2.df$EAS_VARIABILITY <- (count_2.df$count_EAS/count_2.df$length)*100
+count_2.df$SAS_VARIABILITY <- (count_2.df$count_SAS/count_2.df$length)*100
+count_2.df$EUR_VARIABILITY <- (count_2.df$count_EUR/count_2.df$length)*100
+
+count_2.df$VARIABILITY[is.na(count_2.df$VARIABILITY)] <- 0
+count_2.df$all_VARIABILITY[is.na(count_2.df$all_VARIABILITY)] <- 0
+count_2.df$AFR_VARIABILITY[is.na(count_2.df$AFR_VARIABILITY)] <- 0
+count_2.df$AMR_VARIABILITY[is.na(count_2.df$AMR_VARIABILITY)] <- 0
+count_2.df$EAS_VARIABILITY[is.na(count_2.df$EAS_VARIABILITY)] <- 0
+count_2.df$SAS_VARIABILITY[is.na(count_2.df$SAS_VARIABILITY)] <- 0
+count_2.df$EUR_VARIABILITY[is.na(count_2.df$EUR_VARIABILITY)] <- 0
+
+rm(count.df, flipped_bind, count, count_AFR, count_all, count_AMR, count_EAS, count_EUR, count_SAS, imp)
+
+colnames(count_2.df)[6] <-"geneID"
+write.csv(count_2.df, file="kgen_variability_populations_20160608.csv")
+
+```

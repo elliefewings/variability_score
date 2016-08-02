@@ -1,0 +1,123 @@
+---
+title: "variable_genes"
+author: "EF"
+date: "07 June 2016"
+output: html_document
+---
+# start_section
+  
+```{r start_section}
+
+# Time stamp
+Sys.time()
+
+# Clean up
+rm(list=ls())
+graphics.off()
+
+# Set root working folder
+library(knitr)
+library(dplyr)
+library(ggplot2)
+library(stringr)
+
+opts_knit$set(root.dir = "/scratch/medgen/users/eleanor/2015-16/R_scripts/")
+#setwd("/scratch/medgen/users/eleanor/2015-16/R_scripts/")
+
+```
+
+#Load original data
+```{r original data}
+exon <- read.table("ucsc_exonpos.txt", sep = "\t", quote="")
+kgen <- read.table("nextera_exome_ip10_biallelic_nonsv_1k_vep_vcf.txt", header=TRUE, sep = "\t", quote="")
+
+```
+
+#Edit data
+```{r edit data}
+library(stringr)
+colnames(exon) <- c('CHR', 'Refgene','TYPE', 'START', 'STOP','N', 'STRAND', 'X', 'IDs')
+exon2 <- data.frame(do.call('rbind', strsplit(as.character(exon$IDs),';',fixed=TRUE)))
+exon3 <- data.frame(do.call('rbind', strsplit(as.character(exon2$X1),' ',fixed=TRUE)))
+exon4 <- mutate(exon3, X2 = str_replace_all(X2, pattern='"', ''))
+exon_clean <- cbind(exon, exon4)
+exon.short <- select(exon_clean, CHR, TYPE, START, STOP, STRAND, X2)
+
+rm(exon, exon2, exon3, exon4, exon_clean)
+```
+
+#Select cds and flip -ve strands
+```{r test}
+cds <- exon.short[exon.short$TYPE == "CDS",]
+pos <- cds[cds$STRAND == "+",]
+neg <- cds[cds$STRAND == "-",]
+flip <- neg[order(neg$X2,neg$START, decreasing = TRUE),]
+flipped_bind <- rbind(pos, flip)
+rm(cds, exon.short, flip,neg, pos)
+```
+
+#Add exon number and length column
+```{r add cols}
+flipped_bind$exon <- ave(flipped_bind$X2 == flipped_bind$X2 , flipped_bind$X2, FUN=cumsum)
+
+flipped_bind$length <- flipped_bind$STOP - flipped_bind$START
+```
+
+#Create allele counts for different populations
+```{r populations}
+imp <- c("HIGH", "MODERATE")
+kgen.imp <- kgen[kgen$IMPACT %in% imp,]
+
+kgen.imp$AFR_AC <- kgen.imp$AFR_AF*(2*661)
+kgen.imp$AMR_AC <- kgen.imp$AMR_AF*(2*347)
+kgen.imp$EAS_AC <- kgen.imp$EAS_AF*(2*504)
+kgen.imp$SAS_AC <- kgen.imp$SAS_AF*(2*489)
+kgen.imp$EUR_AC <- kgen.imp$EUR_AF*(2*503)
+
+```
+
+
+#Count number of variants in exon
+```{r count variants}
+
+pos <- as.vector(kgen.imp$POS)
+
+starp <- select(flipped_bind, START, STOP)
+count <- starp %>% apply(1, function(x) sum(pos >= x["START"] & pos <= x["STOP"]))
+
+count_all <- starp %>% apply(1, function(x) sum(kgen.imp$AC[pos >= x["START"] & pos <= x["STOP"]]))
+count_AFR <- starp %>% apply(1, function(x) sum(kgen.imp$AFR_AC[pos >= x["START"] & pos <= x["STOP"]]))
+count_AMR <- starp %>% apply(1, function(x) sum(kgen.imp$AMR_AC[pos >= x["START"] & pos <= x["STOP"]]))
+count_EAS <- starp %>% apply(1, function(x) sum(kgen.imp$EAS_AC[pos >= x["START"] & pos <= x["STOP"]]))
+count_SAS <- starp %>% apply(1, function(x) sum(kgen.imp$SAS_AC[pos >= x["START"] & pos <= x["STOP"]]))
+count_EUR <- starp %>% apply(1, function(x) sum(kgen.imp$EUR_AC[pos >= x["START"] & pos <= x["STOP"]]))
+
+count.df <- cbind(flipped_bind, count, count_all, count_AFR, count_AMR, count_EAS, count_SAS, count_EUR)
+```
+
+#Create variability column
+```{r variability}
+count.df$VARIABILITY <- (count.df$count/count.df$length)*100
+
+count.df$all_VARIABILITY <- (count.df$count_all/count.df$length)*100
+count.df$AFR_VARIABILITY <- (count.df$count_AFR/count.df$length)*100
+count.df$AMR_VARIABILITY <- (count.df$count_AMR/count.df$length)*100
+count.df$EAS_VARIABILITY <- (count.df$count_EAS/count.df$length)*100
+count.df$SAS_VARIABILITY <- (count.df$count_SAS/count.df$length)*100
+count.df$EUR_VARIABILITY <- (count.df$count_EUR/count.df$length)*100
+
+colnames(count.df)[6] <-"geneID"
+
+count.df$VARIABILITY[is.na(count.df$VARIABILITY)] <- 0
+count.df$all_VARIABILITY[is.na(count.df$all_VARIABILITY)] <- 0
+count.df$AFR_VARIABILITY[is.na(count.df$AFR_VARIABILITY)] <- 0
+count.df$AMR_VARIABILITY[is.na(count.df$AMR_VARIABILITY)] <- 0
+count.df$EAS_VARIABILITY[is.na(count.df$EAS_VARIABILITY)] <- 0
+count.df$SAS_VARIABILITY[is.na(count.df$SAS_VARIABILITY)] <- 0
+count.df$EUR_VARIABILITY[is.na(count.df$EUR_VARIABILITY)] <- 0
+
+rm(flipped_bind, kgen, kgen.imp, starp, pos)
+
+save.image(file="kgen_variability_makefile_complete_v2_nonsyn_populations_20160602.RData")
+
+```

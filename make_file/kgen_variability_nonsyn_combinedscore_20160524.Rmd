@@ -21,16 +21,14 @@ library(dplyr)
 library(ggplot2)
 library(stringr)
 
-opts_knit$set(root.dir = "C:/data_local/Control_data/1K_genomes")
-setwd("C:/data_local/Control_data/1K_genomes")
+opts_knit$set(root.dir = "/scratch/medgen/users/eleanor/2015-16/R_scripts/")
+setwd("/scratch/medgen/users/eleanor/2015-16/R_scripts/")
 
 ```
 #Load data
 ```{r original data}
-var <- read.table("variability_score_outputs/variability_annotated_nonsyn_R_20160524.csv", sep= ",", header=TRUE)
+var <- read.table("variability_annotated_nonsyn_R_20160524.csv", sep= ",", header=TRUE)
 dim(var)
-
-gene <- read.table("accesno_sizes_NCBI.txt", sep= "\t", header=FALSE)
 ```
 
 #Create combined score
@@ -64,18 +62,7 @@ high$score <- "high"
 #merge rows and tidy
 merge.scores.df <- bind_rows(low, midlow, midhigh, high)
 clean.df <- mutate(merge.scores.df, CHROM=str_replace_all(CHR, pattern="chr", ""))
-```
 
-#Add gene names and write to csv
-```{r write}
-gene_names <- select(gene, V2, V7)
-colnames(gene_names) <- c("ID", "SYMBOL")
-
-id <- data.frame(do.call('rbind', strsplit(as.character(gene_names$ID), ".",fixed=TRUE)))
-rebind <- cbind(id,gene_names)
-rb <- select(rebind, X1, SYMBOL)
-colnames(rb) <- c("geneID", "SYMBOL")
-
-complete <- merge(clean.df, rb, by = "geneID", all = TRUE)
-#write.csv(clean.df, file= "variability_thresholds_combinedscore_nonsyn_20160525.csv", quote=FALSE)
+#write csv
+write.csv(clean.df, file= "variability_thresholds_combinedscore_nonsyn_20160525.csv", quote=FALSE)
 ```

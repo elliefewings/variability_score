@@ -21,26 +21,51 @@ library(dplyr)
 library(ggplot2)
 library(stringr)
 
-opts_knit$set(root.dir = "C:/data_local/Control_data/1K_genomes/")
-#setwd("C:/data_local/Control_data/1K_genomes/")
+opts_knit$set(root.dir = "/scratch/medgen/users/eleanor/2015-16/R_scripts/")
+setwd("/scratch/medgen/users/eleanor/2015-16/R_scripts/")
 
 ```
-#Load data
-```{r load original data}
-kgen <- read.table('C:/data_local/Control_data/1K_genomes/nextera_exome_ip10_biallelic_nonsv_1k_vep_vcf.txt', sep="\t", header=TRUE)
-ncbi <- read.table('C:/data_local/Control_data/1K_genomes/accesno_sizes_NCBI.txt', sep="\t")
+#Load original data
+```{r original data}
+exon <- read.table("ucsc_exonpos.txt", sep = "\t", quote="")
+kgen <- read.table("nextera_exome_ip10_biallelic_nonsv_1k_vep_vcf.txt", sep = "\t", quote="")
+
 ```
 
 #Edit data
 ```{r edit data}
-`colnames<-`(ncbi, c('CHR', 'Refgene', 'TYPE', 'START', 'STOP', 'N', 'STRAND', 'X', 'IDs'))
+library(stringr)
+colnames(exon) <- c('CHR', 'Refgene','TYPE', 'START', 'STOP','N', 'STRAND', 'X', 'IDs')
+exon2 <- data.frame(do.call('rbind', strsplit(as.character(exon$IDs),';',fixed=TRUE)))
+exon3 <- data.frame(do.call('rbind', strsplit(as.character(exon2$X1),' ',fixed=TRUE)))
+exon4 <- mutate(exon3, X2 = str_replace_all(X2, pattern='"', ''))
+exon_clean <- cbind(exon, exon4)
+exon.short <- select(exon_clean, CHR, TYPE, START, STOP, STRAND, X2)
 
-#Load data
-```{r load data}
-exons_original.df <- read.table("kgen_variableregion_20160504.csv", header=TRUE, row.names=1, sep=",", quote="")
-exons.df <- exons_original.df[exons_original.df$length > 6,]
-short.df <- exons.df[exons.df$length <2000,]
+rm(exon, exon2, exon3, exon4, exon_clean)
 ```
+
+#Select cds and flip -ve strands
+```{r test}
+cds <- exon.short[exon.short$TYPE == "CDS",]
+pos <- cds[cds$STRAND == "+",]
+neg <- cds[cds$STRAND == "-",]
+flip <- neg[order(neg$X2,neg$START, decreasing = TRUE),]
+flipped_bind <- rbind(pos, flip)
+rm(cds, exon.short, flip,neg, pos)
+```
+
+#Add exon number and length column
+```{r add cols}
+flipped_bind$exon <- ave(flipped_bind$X2 == flipped_bind$X2 , flipped_bind$X2, FUN=cumsum)
+
+flipped_bind$length <- flipped_bind$STOP - flipped_bind$START
+```
+
+#Count number of variants in exon
+```{r count variants}
+count <- flipped_bind %>% rowwise() %>% 
+  mutate(variants= nrow(kgen[kgen$POS >= START &  kgen$POS <= STOP,]))
 
 #Add columns to data
 ```{r add col}

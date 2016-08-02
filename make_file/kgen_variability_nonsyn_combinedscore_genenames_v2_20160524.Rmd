@@ -1,7 +1,7 @@
 ---
 title: "variable_genes"
 author: "EF"
-date: "25 May 2016"
+date: "27 May 2016"
 output: html_document
 ---
 # start_section
@@ -30,8 +30,7 @@ opts_knit$set(root.dir = "/scratch/medgen/users/eleanor/2015-16/R_scripts/")
 var <- read.table("variability_annotated_nonsyn_R_20160524.csv", sep= ",", header=TRUE)
 dim(var)
 
-
-gene <- read.table("refseq_geneid.txt", sep= "\t", header=FALSE)
+gene <- read.table("Refseq2Gene.txt", sep= "\t", header=FALSE)
 dim(gene)
 ```
 
@@ -71,22 +70,11 @@ rm(comb, high, low, merge.scores.df, midhigh, midlow)
 
 #Add gene names and write to csv
 ```{r write}
-gene_names <- select(gene, V3, V6)
-colnames(gene_names) <- c("SYMBOL", "ID")
+colnames(gene) <- c("geneID", "SYMBOL")
 
-id <- data.frame(do.call('rbind', strsplit(as.character(gene_names$ID), ".",fixed=TRUE)))
-rebind <- cbind(id, gene_names)
-rb <- select(rebind, X1, SYMBOL)
-colnames(rb) <- c("geneID", "SYMBOL")
-cripak <- data.frame(geneID = "NM_175918", SYMBOL= "CRIPAK")
-rb <- rbind(rb, cripak)
-
-rm(gene_names, gene, id, rebind)
-
-complete <- merge(clean.df, rb, by = "geneID", all.x = TRUE, all.y = FALSE)
-dim(complete)
+complete <- merge(clean.df, gene, by = "geneID", all.x = TRUE, all.y = FALSE)
 sum(is.na(complete$SYMBOL))
 
-write.csv(complete, file="variability_thresholds_combinedscore_geneann_nonsyn_20160526.csv", quote=FALSE)
+write.csv(complete, file="variability_thresholds_combinedscore_geneann_v2_nonsyn_20160526.csv", quote=FALSE)
 
 ```
